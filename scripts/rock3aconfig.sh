@@ -59,28 +59,30 @@ mkfs -F -t ext4 -L volumio "${SYS_PART}"
 mkfs -F -t ext4 -L volumio_data "${DATA_PART}"
 sync
 
-echo "Preparing for the rock3a kernel/ platform files"
-if [ -d platform-rock3a ]
+echo "Preparing for the Odroid C1/C1+ kernel/ platform files"
+if [ -d platform-odroid ]
 then
 	echo "Platform folder already exists - keeping it"
-    # if you really want to re-clone from the repo, then delete the platform-rock3a folder
+    # if you really want to re-clone from the repo, then delete the platform-odroid folder
     # that will refresh all the odroid platforms, see below
-	cd platform-rock3a
-	if [ ! -d rock3a ]; then
-	   tar xfJ rock3a.tar.xz
+	cd platform-odroid
+	if [ ! -d odroidc1 ]; then
+	   tar xfJ odroidc1.tar.xz
 	fi
 	cd ..
 else
-	echo "Clone all rock3a files from repo"
-	git clone --depth 1 https://github.com/GASB0/Platform-rock3a.git platform-rock3a
-	echo "Unpack the rock3a platform files"
-    cd platform-rock3a
-	tar xfJ rock3a.tar.xz
+	echo "Clone all Odroid files from repo"
+	git clone --depth 1 https://github.com/gkkpch/Platform-Odroid.git platform-odroid
+	echo "Unpack the C1/C1+ platform files"
+    cd platform-odroid
+	tar xfJ odroidc1.tar.xz
 	cd ..
 fi
 
 echo "Copying the bootloader"
-dd if=platform-rock3a/rock3a/u-boot/uboot.img of=${LOOP_DEV} seek=64 conv=notrunc
+dd if=platform-odroid/odroidc1/uboot/bl1.bin.hardkernel of=${LOOP_DEV} bs=1 count=442
+dd if=platform-odroid/odroidc1/uboot/bl1.bin.hardkernel of=${LOOP_DEV} bs=512 skip=1 seek=1
+dd if=platform-odroid/odroidc1/uboot/u-boot.bin of=${LOOP_DEV} seek=64
 sync
 
 echo "Preparing for Volumio rootfs"
@@ -104,34 +106,33 @@ mkdir /mnt/volumio/images
 mount -t ext4 "${SYS_PART}" /mnt/volumio/images
 mkdir /mnt/volumio/rootfs
 mkdir /mnt/volumio/rootfs/boot
-# FIXME: This is the line what breaks when executing the script
 mount -t vfat "${BOOT_PART}" /mnt/volumio/rootfs/boot
 
 echo "Copying Volumio RootFs"
 cp -pdR build/$ARCH/root/* /mnt/volumio/rootfs
-echo "Copying rock3a boot files"
-cp -R platform-rock3a/rock3a/boot/rockchip /mnt/volumio/rootfs/boot
-cp platform-rock3a/rock3a/boot/Image /mnt/volumio/rootfs/boot
-echo "Copying rock3a modules and firmware"
-cp -pdR platform-rock3a/rock3a/lib/modules /mnt/volumio/rootfs/lib/
-# cp -pdR platform-rock3a/rock3a/lib/firmware /mnt/volumio/rootfs/lib/
-# echo "Copying rock3a DAC detection service"
-# cp platform-odroid/odroidc1/etc/odroiddac.service /mnt/volumio/rootfs/lib/systemd/system/
-# cp platform-odroid/odroidc1/etc/odroiddac.sh /mnt/volumio/rootfs/opt/
-# echo "Copying framebuffer init script"
-# cp platform-odroid/odroidc1/etc/C1_init.sh /mnt/volumio/rootfs/usr/local/bin/c1-init.sh
+echo "Copying OdroidC1 boot files"
+cp platform-odroid/odroidc1/boot/boot.ini* /mnt/volumio/rootfs/boot
+cp platform-odroid/odroidc1/boot/meson8b_odroidc.dtb /mnt/volumio/rootfs/boot
+cp platform-odroid/odroidc1/boot/uImage /mnt/volumio/rootfs/boot
+echo "Copying OdroidC1 modules and firmware"
+cp -pdR platform-odroid/odroidc1/lib/modules /mnt/volumio/rootfs/lib/
+cp -pdR platform-odroid/odroidc1/lib/firmware /mnt/volumio/rootfs/lib/
+echo "Copying OdroidC1 DAC detection service"
+cp platform-odroid/odroidc1/etc/odroiddac.service /mnt/volumio/rootfs/lib/systemd/system/
+cp platform-odroid/odroidc1/etc/odroiddac.sh /mnt/volumio/rootfs/opt/
+echo "Copying framebuffer init script"
+cp platform-odroid/odroidc1/etc/C1_init.sh /mnt/volumio/rootfs/usr/local/bin/c1-init.sh
 
-# echo "Copying OdroidC1 inittab"
-# cp platform-odroid/odroidc1/etc/inittab /mnt/volumio/rootfs/etc/
+echo "Copying OdroidC1 inittab"
+cp platform-odroid/odroidc1/etc/inittab /mnt/volumio/rootfs/etc/
 
 #TODO: odroids should be able to run generic debian
 sed -i "s/Raspbian/Debian/g" /mnt/volumio/rootfs/etc/issue
 
 sync
 
-echo "Preparing to run chroot for more RADXA-${MODEL} configuration"
-# TODO: Implement the rock3aconfig.sh script
-cp scripts/rock3aconfig.sh /mnt/volumio/rootfs
+echo "Preparing to run chroot for more Odroid-${MODEL} configuration"
+cp scripts/odroidc1config.sh /mnt/volumio/rootfs
 cp scripts/initramfs/init /mnt/volumio/rootfs/root
 cp scripts/initramfs/mkinitramfs-custom.sh /mnt/volumio/rootfs/usr/local/sbin
 #copy the scripts for updating from usb
@@ -158,7 +159,7 @@ fi
 
 chroot /mnt/volumio/rootfs /bin/bash -x <<'EOF'
 su -
-/rock3aconfig.sh
+/odroidc1config.sh
 EOF
 
 UIVARIANT_FILE=/mnt/volumio/rootfs/UIVARIANT
@@ -169,19 +170,19 @@ if [ -f "${UIVARIANT_FILE}" ]; then
 fi
 
 #cleanup
-rm /mnt/volumio/rootfs/rock3aconfig.sh /mnt/volumio/rootfs/root/init
+rm /mnt/volumio/rootfs/odroidc1config.sh /mnt/volumio/rootfs/root/init
 
 echo "Unmounting Temp devices"
 umount -l /mnt/volumio/rootfs/dev
 umount -l /mnt/volumio/rootfs/proc
 umount -l /mnt/volumio/rootfs/sys
 
-# echo "Copying LIRC configuration files for HK stock remote"
-# cp platform-odroid/odroidc1/etc/lirc/lircd.conf /mnt/volumio/rootfs/etc/lirc
-# cp platform-odroid/odroidc1/etc/lirc/hardware.conf /mnt/volumio/rootfs/etc/lirc
-# cp platform-odroid/odroidc1/etc/lirc/lircrc /mnt/volumio/rootfs/etc/lirc
+echo "Copying LIRC configuration files for HK stock remote"
+cp platform-odroid/odroidc1/etc/lirc/lircd.conf /mnt/volumio/rootfs/etc/lirc
+cp platform-odroid/odroidc1/etc/lirc/hardware.conf /mnt/volumio/rootfs/etc/lirc
+cp platform-odroid/odroidc1/etc/lirc/lircrc /mnt/volumio/rootfs/etc/lirc
 
-echo "==> rock3a device installed"
+echo "==> Odroid-C1 device installed"
 
 #echo "Removing temporary platform files"
 #echo "(you can keep it safely as long as you're sure of no changes)"
