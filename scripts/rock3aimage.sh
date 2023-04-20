@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Default build for Debian 32bit
-ARCH="arm"
+ARCH="armv8"
 
 while getopts ":v:p:a:" opt; do
   case $opt in
@@ -105,10 +105,23 @@ mount -t ext4 "${SYS_PART}" /mnt/volumio/images
 mkdir /mnt/volumio/rootfs
 mkdir /mnt/volumio/rootfs/boot
 # FIXME: This is the line what breaks when executing the script
-mount -t vfat "${BOOT_PART}" /mnt/volumio/rootfs/boot
+echo "$BOOT_PART"
+sudo mount -t vfat "${BOOT_PART}" /mnt/volumio/rootfs/boot
+
+# Checking if there's a lz4 file
+echo "Extracting $ARCH filesystem image"
+foundLZ4Files=$(find build/ -type f -name "*.lz4")
+if [ $(echo $foundLZ4Files | wc -l ) != 0 ]; then
+  fileToExtract=$(echo $foundLZ4Files | grep -iE ".*$ARCH.*" | sed 1q)
+  unlz4 -d $fileToExtract build/rootfs.tar
+  mkdir build/$ARCH/
+  mkdir build/$ARCH/root
+  tar xf build/rootfs.tar -C build/$ARCH/root
+fi
 
 echo "Copying Volumio RootFs"
 cp -pdR build/$ARCH/root/* /mnt/volumio/rootfs
+
 echo "Copying rock3a boot files"
 cp -R platform-rock3a/rock3a/boot/rockchip /mnt/volumio/rootfs/boot
 cp platform-rock3a/rock3a/boot/Image /mnt/volumio/rootfs/boot
@@ -130,7 +143,6 @@ sed -i "s/Raspbian/Debian/g" /mnt/volumio/rootfs/etc/issue
 sync
 
 echo "Preparing to run chroot for more RADXA-${MODEL} configuration"
-# TODO: Implement the rock3aconfig.sh script
 cp scripts/rock3aconfig.sh /mnt/volumio/rootfs
 cp scripts/initramfs/init /mnt/volumio/rootfs/root
 cp scripts/initramfs/mkinitramfs-custom.sh /mnt/volumio/rootfs/usr/local/sbin
