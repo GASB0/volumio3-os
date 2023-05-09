@@ -80,7 +80,10 @@ else
 fi
 
 echo "Copying the bootloader"
-dd if=platform-rock3a/rock3a/u-boot/uboot.img of=${LOOP_DEV} seek=64 conv=notrunc
+# FIXME: Problems regarding mounting seem to originate from here
+dd if=platform-rock3a/rock3a/u-boot/idbloader.bin seek=64 of=${LOOP_DEV} status=progress
+dd if=platform-rock3a/rock3a/u-boot/uboot.img seek=16384 of=${LOOP_DEV} status=progress
+dd if=platform-rock3a/rock3a/u-boot/trust.bin seek=24576 of=${LOOP_DEV} status=progress
 sync
 
 echo "Preparing for Volumio rootfs"
