@@ -32,11 +32,14 @@ dd if=/dev/zero of=${IMG_FILE} bs=1M count=2800
 echo "Creating Image Bed"
 LOOP_DEV=`sudo losetup -f --show ${IMG_FILE}`
 
-parted -s "${LOOP_DEV}" mklabel msdos
-parted -s "${LOOP_DEV}" mkpart primary fat32 1 64
-parted -s "${LOOP_DEV}" mkpart primary ext3 65 2500
-parted -s "${LOOP_DEV}" mkpart primary ext3 2500 100%
+parted -s "${LOOP_DEV}" mklabel gpt
+parted -s "${LOOP_DEV}" mkpart primary fat16 16 128
+parted -s "${LOOP_DEV}" mkpart primary ext3 129 2500
+parted -s "${LOOP_DEV}" mkpart primary ext3 2501 100%
 parted -s "${LOOP_DEV}" set 1 boot on
+parted -s "${LOOP_DEV}" set 1 legacy_boot on
+parted -s "${LOOP_DEV}" name 1 boot
+parted -s "${LOOP_DEV}" name 2 rootfs
 parted -s "${LOOP_DEV}" print
 partprobe "${LOOP_DEV}"
 kpartx -s -a "${LOOP_DEV}"
@@ -65,6 +68,8 @@ then
 	echo "Platform folder already exists - keeping it"
     # if you really want to re-clone from the repo, then delete the platform-rock3a folder
     # that will refresh all the odroid platforms, see below
+  rm -rf platform-rock3a/*
+  cp ../buildroot-rockpi-3a/output/images/rock3a.tar.xz platform-rock3a/
 	cd platform-rock3a
 	if [ ! -d rock3a ]; then
 	   tar xfJ rock3a.tar.xz
@@ -83,12 +88,13 @@ echo "Copying the bootloader"
 # FIXME: Problems regarding mounting seem to originate from here
 dd if=platform-rock3a/rock3a/u-boot/idbloader.bin seek=64 of=${LOOP_DEV} status=progress
 dd if=platform-rock3a/rock3a/u-boot/uboot.img seek=16384 of=${LOOP_DEV} status=progress
-dd if=platform-rock3a/rock3a/u-boot/trust.bin seek=24576 of=${LOOP_DEV} status=progress
+# dd if=platform-rock3a/rock3a/u-boot/trust.bin seek=24576 of=${LOOP_DEV} status=progress
 sync
 
 echo "Preparing for Volumio rootfs"
 if [ -d /mnt ]
 then
+  umount /mnt
 	echo "/mount folder exist"
 else
 	mkdir /mnt
@@ -126,22 +132,22 @@ echo "Copying Volumio RootFs"
 cp -pdR build/$ARCH/root/* /mnt/volumio/rootfs
 
 echo "Copying rock3a boot files"
-cp -R platform-rock3a/rock3a/boot/rockchip /mnt/volumio/rootfs/boot
-cp platform-rock3a/rock3a/boot/Image /mnt/volumio/rootfs/boot
+cp -R platform-rock3a/rock3a/boot/* /mnt/volumio/rootfs/boot/
+# cp platform-rock3a/rock3a/boot/Image /mnt/volumio/rootfs/boot
 echo "Copying rock3a modules and firmware"
 cp -pdR platform-rock3a/rock3a/lib/modules /mnt/volumio/rootfs/lib/
-# cp -pdR platform-rock3a/rock3a/lib/firmware /mnt/volumio/rootfs/lib/
-# echo "Copying rock3a DAC detection service"
-# cp platform-odroid/odroidc1/etc/odroiddac.service /mnt/volumio/rootfs/lib/systemd/system/
-# cp platform-odroid/odroidc1/etc/odroiddac.sh /mnt/volumio/rootfs/opt/
-# echo "Copying framebuffer init script"
-# cp platform-odroid/odroidc1/etc/C1_init.sh /mnt/volumio/rootfs/usr/local/bin/c1-init.sh
+# # cp -pdR platform-rock3a/rock3a/lib/firmware /mnt/volumio/rootfs/lib/
+# # echo "Copying rock3a DAC detection service"
+# # cp platform-odroid/odroidc1/etc/odroiddac.service /mnt/volumio/rootfs/lib/systemd/system/
+# # cp platform-odroid/odroidc1/etc/odroiddac.sh /mnt/volumio/rootfs/opt/
+# # echo "Copying framebuffer init script"
+# # cp platform-odroid/odroidc1/etc/C1_init.sh /mnt/volumio/rootfs/usr/local/bin/c1-init.sh
 
-# echo "Copying OdroidC1 inittab"
-# cp platform-odroid/odroidc1/etc/inittab /mnt/volumio/rootfs/etc/
+# # echo "Copying OdroidC1 inittab"
+# # cp platform-odroid/odroidc1/etc/inittab /mnt/volumio/rootfs/etc/
 
 #TODO: odroids should be able to run generic debian
-sed -i "s/Raspbian/Debian/g" /mnt/volumio/rootfs/etc/issue
+# sed -i "s/Raspbian/Debian/g" /mnt/volumio/rootfs/etc/issue
 
 sync
 
@@ -191,10 +197,10 @@ umount -l /mnt/volumio/rootfs/dev
 umount -l /mnt/volumio/rootfs/proc
 umount -l /mnt/volumio/rootfs/sys
 
-# echo "Copying LIRC configuration files for HK stock remote"
-# cp platform-odroid/odroidc1/etc/lirc/lircd.conf /mnt/volumio/rootfs/etc/lirc
-# cp platform-odroid/odroidc1/etc/lirc/hardware.conf /mnt/volumio/rootfs/etc/lirc
-# cp platform-odroid/odroidc1/etc/lirc/lircrc /mnt/volumio/rootfs/etc/lirc
+# # echo "Copying LIRC configuration files for HK stock remote"
+# # cp platform-odroid/odroidc1/etc/lirc/lircd.conf /mnt/volumio/rootfs/etc/lirc
+# # cp platform-odroid/odroidc1/etc/lirc/hardware.conf /mnt/volumio/rootfs/etc/lirc
+# # cp platform-odroid/odroidc1/etc/lirc/lircrc /mnt/volumio/rootfs/etc/lirc
 
 echo "==> rock3a device installed"
 
@@ -244,6 +250,8 @@ sync
 echo "Unmounting Temp Devices"
 umount -l /mnt/volumio/images
 umount -l /mnt/volumio/rootfs/boot
+
+rm -rf /mnt/volumio/*
 
 dmsetup remove_all
 losetup -d ${LOOP_DEV}
